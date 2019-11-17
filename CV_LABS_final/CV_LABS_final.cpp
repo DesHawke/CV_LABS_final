@@ -14,6 +14,7 @@ int main()
 	imshow("Display Window", image);
 	waitKey(0);
 	return 0;
+
 }
 
 // Запуск программы: CTRL+F5 или меню "Отладка" > "Запуск без отладки"
