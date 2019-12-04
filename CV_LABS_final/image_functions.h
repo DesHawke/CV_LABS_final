@@ -96,7 +96,7 @@ double Clamp(double min, double max, double value);
 
 vector<Descriptor> getDescriptors(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int barCharCount);
 vector<Descriptor> getDescriptorsInvRot(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int barCharCount);
-vector<double> getPointOrientation(Matrix image_dx, Matrix image_dy, Pixel point, int sigma, int radius);
+vector<double> getPointOrientation(Matrix image_dx, Matrix image_dy, Pixel point, int radius);
 /* Поиск пика */
 double getPeak(double *baskets, int basketCount, int notEqual = -1);
 
@@ -117,4 +117,5 @@ public:
 
 // Поиск похожих дескрипторов
 vector<lines> findSimilar(vector<Descriptor> d1, vector<Descriptor> d2, double treshhold);
+
 #endif

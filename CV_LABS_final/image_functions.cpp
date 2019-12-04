@@ -660,10 +660,9 @@ vector<Descriptor> getDescriptors(Mat image, vector<Pixel> interestPoints, int r
 	return descriptors;
 }
 
-vector<Descriptor> getDescriptorsInvRot(Mat image, vector<Pixel> interestPoints,
-	int radius, int basketCount, int barCharCount)
+vector<Descriptor> getDescriptorsInvRot(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int barCharCount)
 {
-	int sigma = 20;
+	//int sigma = 20;
 	int dimension = 2 * radius;
 	double sector = 2 * PI / basketCount;
 	double halfSector = PI / basketCount;
@@ -674,10 +673,11 @@ vector<Descriptor> getDescriptorsInvRot(Mat image, vector<Pixel> interestPoints,
 	Matrix image_dy = derivative(image, Hy_sobel);
 
 	vector<Descriptor> descriptors;
+	Matrix Gauss = gauss_weight(2 * radius + 1, (double)radius / 3);
 	for (int k = 0; k < interestPoints.size(); k++)
 	{
 		descriptors.push_back(Descriptor(barCharCount * basketCount, interestPoints[k]));
-		vector<double> peaks = getPointOrientation(image_dx, image_dy, interestPoints[k], sigma, radius);    // Ориентация точки
+		vector<double> peaks = getPointOrientation(image_dx, image_dy, interestPoints[k], radius);    // Ориентация точки
 
 		for(int p=0; p< peaks.size(); p++){
 			double phiRotate = peaks[p];
@@ -699,21 +699,34 @@ vector<Descriptor> getDescriptorsInvRot(Mat image, vector<Pixel> interestPoints,
 					double gradient_Y = image_dy.values[coord_X][coord_Y];
 
 					// получаем значение(домноженное на Гаусса) и угол
-					double value = getGradientValue(gradient_X, gradient_Y) /* * KernelCreator.getGaussValue(i, j, sigma)*/;
-					double phi = getGradientDirection(gradient_X, gradient_Y) + 2 * PI - phiRotate;
-					phi = fmod(phi, 2) * PI;  // Shift
+					double value = getGradientValue(gradient_X, gradient_Y) * Gauss.values[i+radius][j+radius];
+					double phi = getGradientDirection(gradient_X, gradient_Y) - phiRotate;
+					if (phi < 0)
+						phi = 2 * PI - phi;
+					if (phi > 2*PI)
+						phi = -2 * PI + phi;
+
+					//phi = fmod(phi, 2) * PI;  // Shift
 
 					// получаем индекс корзины в которую входит phi и смежную с ней
-					int firstBasketIndex = (int)floor(phi / sector);
-					int secondBasketIndex = (int)(floor((phi - halfSector) / sector) + basketCount) % basketCount;
-
+					int firstBasketIndex = (int)(phi / sector);
+					if (phi < halfSector)
+						firstBasketIndex = basketCount - 1;
+					//int secondBasketIndex = (int)((phi / sector) + basketCount) % basketCount;
+					int secondBasketIndex = (firstBasketIndex + 1) % basketCount;
 					// вычисляем центр
 					double mainBasketPhi = firstBasketIndex * sector + halfSector;
 
+					double k = (phi - mainBasketPhi) / sector;
 					// распределяем L(value)
-					double mainBasketValue = (1 - (abs(phi - mainBasketPhi) / sector)) * value;
-					double sideBasketValue = value - mainBasketValue;
+					if (phi < mainBasketPhi) {
+						k = (basketCount * sector + phi - mainBasketPhi) / sector;
+					}
+					double mainBasketValue = (1 - k) * value;
+					double sideBasketValue = k * value;
 
+
+					//////////////////
 					// вычисляем индекс куда записывать значения
 					int i_Rotate = (int)round((i - radius) * cos(phiRotate) + (j - radius) * sin(phiRotate));
 					int j_Rotate = (int)round(-(i - radius) * sin(phiRotate) + (j - radius) * cos(phiRotate));
@@ -729,7 +742,7 @@ vector<Descriptor> getDescriptorsInvRot(Mat image, vector<Pixel> interestPoints,
 
 					int indexMain = (tmp_i * barCharCountInLine + tmp_j) * basketCount + firstBasketIndex;
 					int indexSide = (tmp_i * barCharCountInLine + tmp_j) * basketCount + secondBasketIndex;
-
+					
 					// записываем значения
 					descriptors[k].data[indexMain] += mainBasketValue;
 					descriptors[k].data[indexSide] += sideBasketValue;
@@ -750,11 +763,10 @@ double getGradientValue(double x, double y)
 }
 
 double getGradientDirection(double x, double y) {
-	double angle = atan2(x, y);
+	double angle = atan2(y, x);
 	return angle > 0 ? angle : PI*2 + angle;
 	//return atan2(x, y) + PI; 
 }
-
 // Поиск похожих дескрипторов
 vector<lines> findSimilar(vector<Descriptor> d1, vector<Descriptor> d2, double treshhold)
 {
@@ -802,7 +814,7 @@ double getDistance(Descriptor d1, Descriptor d2)
 }
 
 /* Ориентация точки */
-vector<double> getPointOrientation(Matrix image_dx, Matrix image_dy, Pixel point, int sigma, int radius)
+vector<double> getPointOrientation(Matrix image_dx, Matrix image_dy, Pixel point, int radius)
 {
 	const int basketCount = 36;
 
@@ -815,6 +827,7 @@ vector<double> getPointOrientation(Matrix image_dx, Matrix image_dy, Pixel point
 	for (int i = 0; i < basketCount; i++)
 		baskets[i] = 0;
 
+	Matrix Gauss = gauss_weight(2*radius+1, (double)radius/3);
 	for (int i = -radius; i <= radius; i++)
 	{
 		for (int j = - radius; j <= radius; j++)
@@ -829,43 +842,60 @@ vector<double> getPointOrientation(Matrix image_dx, Matrix image_dy, Pixel point
 			double gradient_Y = image_dy.values[coord_X][coord_Y];
 		
 			// получаем значение(домноженное на Гаусса) и угол
-			double value = getGradientValue(gradient_X, gradient_Y);/* * KernelCreator::getGaussValue(i, j, sigma*2, radius)*/
+			double value = getGradientValue(gradient_X, gradient_Y) * Gauss.values[i+radius][j+radius];
 			double phi = getGradientDirection(gradient_X, gradient_Y);
 
-			// получаем индекс корзины в которую входит phi и смежную с ней
-			int firstBasketIndex = (int)floor(phi / sector);
-			int secondBasketIndex = (int)(floor((phi - halfSector) / sector) + basketCount) % basketCount;
 
+			// получаем индекс корзины в которую входит phi и смежную с ней
+			int firstBasketIndex = (int)(phi / sector);
+			if (phi < halfSector)
+				firstBasketIndex = basketCount - 1;
+			//int secondBasketIndex = (int)((phi / sector) + basketCount) % basketCount;
+			int secondBasketIndex = (firstBasketIndex + 1) % basketCount;
 			// вычисляем центр
 			double mainBasketPhi = firstBasketIndex * sector + halfSector;
 
+			double k = (phi - mainBasketPhi) / sector;
 			// распределяем L(value)
-			double mainBasketValue = (1 - (abs(phi - mainBasketPhi) / sector)) * value;
-			double sideBasketValue = value - mainBasketValue;
+			if (phi < mainBasketPhi) { 
+				k = (basketCount * sector + phi - mainBasketPhi) / sector; }
+			double mainBasketValue = (1 - k)*value;
+			double sideBasketValue = k * value;
 
 			// записываем значения
-			firstBasketIndex = (int)Clamp(0, basketCount - 1, firstBasketIndex);
-			secondBasketIndex = (int)Clamp(0, basketCount - 1, secondBasketIndex);
+			//firstBasketIndex = (int)Clamp(0, basketCount - 1, firstBasketIndex);
+			//secondBasketIndex = (int)Clamp(0, basketCount - 1, secondBasketIndex);
 			baskets[firstBasketIndex] += mainBasketValue;
 			baskets[secondBasketIndex] += sideBasketValue;
 		}
 	}
 
 	// Ищем Пики
-	double peak_1 = getPeak(baskets, basketCount);
-	double peak_2 = getPeak(baskets, basketCount, (int)peak_1);
-
+	//double peak_1 = getPeak(baskets, basketCount);
+	//double peak_2 = getPeak(baskets, basketCount, (int)peak_1);
+	double peak_1, peak_2;
+	int peak_1_index=0, peak_2_index=0;
+	peak_1 = baskets[0];
+	peak_2 = baskets[0];
+	for (int i = 1; i < basketCount; i++) {
+		if (baskets[i] > peak_1) {
+			peak_2 = peak_1;
+			peak_2_index = peak_1_index;
+			peak_1 = baskets[i];
+			peak_1_index = i;
+		}
+	}
 	//хотя бы peak_1 должен быть!
 	vector<double> peaks;
-	if (peak_2 != -1 && baskets[(int)peak_2] / baskets[(int)peak_1] >= 0.8)
+	//if (peak_2 != -1 && baskets[(int)peak_2] / baskets[(int)peak_1] >= 0.8)
+	if(peak_2> peak_1*0.8)
 	{ // Если второй пик не ниже 80%
-		peaks.push_back(parabaloidInterpolation(baskets, basketCount, (int)peak_1));
-		peaks.push_back(parabaloidInterpolation(baskets, basketCount, (int)peak_2));
+		peaks.push_back(fmod(peak_1_index * sector + halfSector, 2*PI));
+		peaks.push_back(fmod(peak_2_index * sector + halfSector, 2 * PI));
 	}
 	else
 	{
-		peaks.push_back(parabaloidInterpolation(baskets, basketCount, (int)peak_1));
-		
+		peaks.push_back(fmod(peak_1_index * sector + halfSector, 2 * PI));
 	}
 	return peaks;
 }

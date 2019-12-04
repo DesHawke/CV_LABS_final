@@ -51,7 +51,7 @@ void lab4(string filename) {
 void lab5(string filename) {
 	Mat original1 = imread(filename);
 	Mat original2 = imread(filename);
-	Mat original2_rotated = rotate_img(original2, 180);
+	Mat original2_rotated = rotate_img(original2, 90);
 	//original2 = rotate_img(original2, 180);
 	//show_image(original2, "rotated");
 	
@@ -70,8 +70,8 @@ void lab5(string filename) {
 	lin_norm(F2, 0, 1);
 
 
-	vector<Pixel> points1 = ANMS(Harris(F1, 5, 0.05, 0), 50);
-	vector<Pixel> points2 = ANMS(Harris(F2, 5, 0.05, 5), 50);
+	vector<Pixel> points1 = ANMS(Harris(F1, 5, 0.05, 0), 100);
+	vector<Pixel> points2 = ANMS(Harris(F2, 5, 0.05, 5), 100 );
 
 	vector<Descriptor> descriptors1 = getDescriptorsInvRot(forcalc1, points1, 8, 8, 16);
 
@@ -90,8 +90,10 @@ void lab5(string filename) {
 
 	RNG rng(10);
 	for (int i = 0; i < matches.size(); i++)
-		line(comparsion, Point(matches[i].first.interPoint.x, matches[i].first.interPoint.y),
-			Point(matches[i].second.interPoint.x + original1.cols, matches[i].second.interPoint.y), Scalar(rng.uniform(0, 255), rng.uniform(0, 255), rng.uniform(0, 255)), 1, 8, 0);
+		line(comparsion, 
+			Point(matches[i].first.interPoint.x, matches[i].first.interPoint.y),
+			Point(matches[i].second.interPoint.x + original1.cols, matches[i].second.interPoint.y), 
+			Scalar(rng.uniform(0, 255), rng.uniform(0, 255), rng.uniform(0, 255)), 1, 8, 0);
 	show_image(comparsion, "comparsion");
 
 }
