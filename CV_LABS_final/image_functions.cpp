@@ -570,20 +570,337 @@ bool find_mx(Matrix F, int sizeW, int x, int y) {
 		return false;
 	else return true;
 }
-//double gradients(Matrix L, int sizeW, vector <Pixel> int_points) {
-//	vector<Gradient> gradients;
-//	int R = sizeW / 2;
-//	for (int i = 0; i < int_points.size; i++) {
-//		for (int y = -R; y <= R; y++) {
-//			for (int x = -R; x <= R; x++) {
-//				gradients[y][x]. = sqrt(pow(L.values[y][x + 1] - L.values[y][x - 1], 2) + pow(L.values[y + 1][x] - L.values[y - 1][x], 2));
-//				angle = std::atan2(partDerX[i], partDerY[i]);
-//				result[i].phi = angle > 0 ? angle : twoPi + angle;
-//			}
-//		}
-//	}
-//}
+double Clamp(double min, double max, double value)
+{
+	if (value < min)
+		return min;
+	if (value > max)
+		return max;
+	return value;
+};
 
+void Descriptor::normalize() {
+	double length = 0;
+	for (int i = 0; i < N; i++)
+		length += data[i] * data[i];
+
+		length = sqrt(length);
+
+		for (int i = 0; i < N; i++)
+			data[i] /= length;
+}
+void Descriptor::clampData(double min, double max)
+{
+	for (int i = 0; i < N; i++)
+		data[i] = Clamp(min, max, data[i]);
+}
+
+vector<Descriptor> getDescriptors(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int barCharCount)
+{
+	int dimension = 2 * radius; //размерность окрестности интересной точки
+	double sector = 2 * PI / basketCount; //размер одной корзины в гистограмме
+	double halfSector = PI / basketCount; // размер половины одной корзины в гистограмме
+	int barCharStep = dimension / (barCharCount / 4); //шаг гистограммы
+	int barCharCountInLine = (barCharCount / 4);
+
+
+	Matrix image_dx = derivative(image, Hx_sobel);
+	Matrix image_dy = derivative(image, Hy_sobel);
+
+	vector<Descriptor> descriptors;
+	for (int k = 0; k < interestPoints.size(); k++)
+	{
+		descriptors.push_back(Descriptor(barCharCount * basketCount, interestPoints[k]));
+
+		for (int i = 0; i < dimension; i++)
+		{
+			for (int j = 0; j < dimension; j++)
+			{
+				// get Gradient
+				double gradient_X = image_dx.values[i - radius + interestPoints[k].x][j - radius + interestPoints[k].y];
+				double gradient_Y = image_dy.values[i - radius + interestPoints[k].x][j - radius + interestPoints[k].y];
+
+				// get value and phi
+				double value = getGradientValue(gradient_X, gradient_Y);
+				double phi = getGradientDirection(gradient_X, gradient_Y);
+
+				// получаем индекс корзины в которую входит phi и смежную с ней
+				int firstBasketIndex = (int)floor(phi / sector);
+				int secondBasketIndex = (int)(floor((phi - halfSector) / sector) + basketCount) % basketCount;
+
+				// вычисляем центр
+				double mainBasketPhi = firstBasketIndex * sector + halfSector;
+
+				// распределяем L(value)
+				double mainBasketValue = (1 - (abs(phi - mainBasketPhi) / sector)) * value;
+				double sideBasketValue = value - mainBasketValue;
+
+				// вычисляем индекс куда записывать значения
+				int tmp_i = i / barCharStep;
+				int tmp_j = j / barCharStep;
+
+				int indexMain = (tmp_i * barCharCountInLine + tmp_j) * basketCount + firstBasketIndex;
+				int indexSide = (tmp_i * barCharCountInLine + tmp_j) * basketCount + secondBasketIndex;
+
+				if (indexMain >= descriptors[k].N)
+					indexMain = 0;
+
+				if (indexSide >= descriptors[k].N)
+					indexSide = 0;
+
+				// записываем значения
+				descriptors[k].data[indexMain] += mainBasketValue;
+				descriptors[k].data[indexSide] += sideBasketValue;
+			}
+		}
+		descriptors[k].normalize();
+		descriptors[k].clampData(0, 0.2);
+		descriptors[k].normalize();
+	}
+	return descriptors;
+}
+
+vector<Descriptor> getDescriptorsInvRot(Mat image, vector<Pixel> interestPoints,
+	int radius, int basketCount, int barCharCount)
+{
+	int sigma = 20;
+	int dimension = 2 * radius;
+	double sector = 2 * PI / basketCount;
+	double halfSector = PI / basketCount;
+	int barCharStep = dimension / (barCharCount / 4);
+	int barCharCountInLine = (barCharCount / 4);
+
+	Matrix image_dx = derivative(image, Hx_sobel);
+	Matrix image_dy = derivative(image, Hy_sobel);
+
+	vector<Descriptor> descriptors;
+	for (int k = 0; k < interestPoints.size(); k++)
+	{
+		descriptors.push_back(Descriptor(barCharCount * basketCount, interestPoints[k]));
+		vector<double> peaks = getPointOrientation(image_dx, image_dy, interestPoints[k], sigma, radius);    // Ориентация точки
+
+		for(int p=0; p< peaks.size(); p++){
+			double phiRotate = peaks[p];
+
+			Pixel pix = interestPoints[k];
+			pix.phi = phiRotate;
+			interestPoints[k] = pix;
+
+			for (int i = -radius; i <= radius; i++)
+			{
+				for (int j = -radius; j <= radius; j++)
+				{
+					// координаты
+					int coord_X = check_edge(interestPoints[k].x, i, image_dx.width);
+					int coord_Y = check_edge(interestPoints[k].y, j, image_dx.height);
+					
+					// градиент
+					double gradient_X = image_dx.values[coord_X][coord_Y];
+					double gradient_Y = image_dy.values[coord_X][coord_Y];
+
+					// получаем значение(домноженное на Гаусса) и угол
+					double value = getGradientValue(gradient_X, gradient_Y) /* * KernelCreator.getGaussValue(i, j, sigma)*/;
+					double phi = getGradientDirection(gradient_X, gradient_Y) + 2 * PI - phiRotate;
+					phi = fmod(phi, 2) * PI;  // Shift
+
+					// получаем индекс корзины в которую входит phi и смежную с ней
+					int firstBasketIndex = (int)floor(phi / sector);
+					int secondBasketIndex = (int)(floor((phi - halfSector) / sector) + basketCount) % basketCount;
+
+					// вычисляем центр
+					double mainBasketPhi = firstBasketIndex * sector + halfSector;
+
+					// распределяем L(value)
+					double mainBasketValue = (1 - (abs(phi - mainBasketPhi) / sector)) * value;
+					double sideBasketValue = value - mainBasketValue;
+
+					// вычисляем индекс куда записывать значения
+					int i_Rotate = (int)round((i - radius) * cos(phiRotate) + (j - radius) * sin(phiRotate));
+					int j_Rotate = (int)round(-(i - radius) * sin(phiRotate) + (j - radius) * cos(phiRotate));
+
+					// отбрасываем
+					if (i_Rotate < -radius || j_Rotate < -radius || i_Rotate >= radius || j_Rotate >= radius)
+					{
+						continue;
+					}
+
+					int tmp_i = (i_Rotate + radius) / barCharStep;
+					int tmp_j = (j_Rotate + radius) / barCharStep;
+
+					int indexMain = (tmp_i * barCharCountInLine + tmp_j) * basketCount + firstBasketIndex;
+					int indexSide = (tmp_i * barCharCountInLine + tmp_j) * basketCount + secondBasketIndex;
+
+					// записываем значения
+					descriptors[k].data[indexMain] += mainBasketValue;
+					descriptors[k].data[indexSide] += sideBasketValue;
+				}
+			}
+			descriptors[k].normalize();
+			descriptors[k].clampData(0, 0.2);
+			descriptors[k].normalize();
+			descriptors[k].interPoint = interestPoints[k];
+		}
+	}
+	return descriptors;
+}
+
+double getGradientValue(double x, double y)
+{
+	return sqrt(x * x + y * y);
+}
+
+double getGradientDirection(double x, double y) {
+	double angle = atan2(x, y);
+	return angle > 0 ? angle : PI*2 + angle;
+	//return atan2(x, y) + PI; 
+}
+
+// Поиск похожих дескрипторов
+vector<lines> findSimilar(vector<Descriptor> d1, vector<Descriptor> d2, double treshhold)
+{
+	vector<lines> similar;
+	for (int i = 0; i < d1.size(); i++)
+	{
+		int indexSimilar = -1;
+		double prevDistance = 10000000;       // Предыдущий
+		double minDistance = 10000000;        // Минимальный
+		for (int j = 0; j < d2.size(); j++)
+		{
+			double dist = getDistance(d1[i], d2[j]);
+			if (dist < minDistance)
+			{
+				indexSimilar = j;
+				prevDistance = minDistance;
+				minDistance = dist;
+			}
+		}
+
+		if (minDistance / prevDistance > treshhold)
+		{
+			continue;      // отбрасываем
+		}
+		else
+		{
+			lines l;
+			l.first = d1[i];
+			l.second = d2[indexSimilar];
+			similar.push_back(l);
+		}
+	}
+	return similar;
+}
+
+double getDistance(Descriptor d1, Descriptor d2)
+{
+	double result = 0;
+	for (int i = 0; i < d1.N; i++)
+	{
+		double tmp = d1.data[i] - d2.data[i];
+		result += tmp * tmp;
+	}
+	return sqrt(result);
+}
+
+/* Ориентация точки */
+vector<double> getPointOrientation(Matrix image_dx, Matrix image_dy, Pixel point, int sigma, int radius)
+{
+	const int basketCount = 36;
+
+	int dimension = radius * 2;
+	double sector = 2 * PI / basketCount;
+	double halfSector = PI / basketCount;
+
+	double *baskets = new double[basketCount];
+
+	for (int i = 0; i < basketCount; i++)
+		baskets[i] = 0;
+
+	for (int i = -radius; i <= radius; i++)
+	{
+		for (int j = - radius; j <= radius; j++)
+		{
+
+			int coord_X = check_edge(point.x, i, image_dx.width);
+			int coord_Y = check_edge(point.y, j, image_dx.height);
+
+			// градиент
+		
+			double gradient_X = image_dx.values[coord_X][coord_Y];
+			double gradient_Y = image_dy.values[coord_X][coord_Y];
+		
+			// получаем значение(домноженное на Гаусса) и угол
+			double value = getGradientValue(gradient_X, gradient_Y);/* * KernelCreator::getGaussValue(i, j, sigma*2, radius)*/
+			double phi = getGradientDirection(gradient_X, gradient_Y);
+
+			// получаем индекс корзины в которую входит phi и смежную с ней
+			int firstBasketIndex = (int)floor(phi / sector);
+			int secondBasketIndex = (int)(floor((phi - halfSector) / sector) + basketCount) % basketCount;
+
+			// вычисляем центр
+			double mainBasketPhi = firstBasketIndex * sector + halfSector;
+
+			// распределяем L(value)
+			double mainBasketValue = (1 - (abs(phi - mainBasketPhi) / sector)) * value;
+			double sideBasketValue = value - mainBasketValue;
+
+			// записываем значения
+			firstBasketIndex = (int)Clamp(0, basketCount - 1, firstBasketIndex);
+			secondBasketIndex = (int)Clamp(0, basketCount - 1, secondBasketIndex);
+			baskets[firstBasketIndex] += mainBasketValue;
+			baskets[secondBasketIndex] += sideBasketValue;
+		}
+	}
+
+	// Ищем Пики
+	double peak_1 = getPeak(baskets, basketCount);
+	double peak_2 = getPeak(baskets, basketCount, (int)peak_1);
+
+	//хотя бы peak_1 должен быть!
+	vector<double> peaks;
+	if (peak_2 != -1 && baskets[(int)peak_2] / baskets[(int)peak_1] >= 0.8)
+	{ // Если второй пик не ниже 80%
+		peaks.push_back(parabaloidInterpolation(baskets, basketCount, (int)peak_1));
+		peaks.push_back(parabaloidInterpolation(baskets, basketCount, (int)peak_2));
+	}
+	else
+	{
+		peaks.push_back(parabaloidInterpolation(baskets, basketCount, (int)peak_1));
+		
+	}
+	return peaks;
+}
+
+/* Поиск пика */
+double getPeak(double *baskets, int basketCount, int notEqual)
+{
+	int maxBasketIndex = -1;
+	for (int i = 0; i < basketCount; i++)
+	{
+		if (baskets[i] > baskets[(i - 1 + basketCount) % basketCount]
+			&& baskets[i] > baskets[(i + 1) % basketCount] && i != notEqual)
+		{
+			if (maxBasketIndex != -1 && baskets[maxBasketIndex] > baskets[i])
+			{
+				continue;
+			}
+			maxBasketIndex = i;
+		}
+	}
+	return maxBasketIndex;
+}
+
+/* Интерполяция параболой */
+double parabaloidInterpolation(double *baskets, int basketCount, int maxIndex)
+{
+	// берём левую и правую корзину и интерполируем параболой
+	double left = baskets[(maxIndex - 1 + basketCount) % basketCount];
+	double right = baskets[(maxIndex + 1) % basketCount];
+	double mid = baskets[maxIndex];
+
+	double sector = 2 * PI / basketCount;
+	double phi = (left - right) / (2 * (left + right - 2 * mid));
+	return (phi + maxIndex) * sector + (sector / 2);
+}
 //Matrix *L(Matrix *F, int s, double sig_0, double sig_a) {
 //
 //	Matrix *Octaves = new Matrix[10];
@@ -609,27 +926,4 @@ bool find_mx(Matrix F, int sizeW, int x, int y) {
 //	}
 //
 //	return Octaves;
-//}
-
-//vector<Descriptor> CreateDescriptors(Mat image, vector<Point> points, int DescriptorSizeD, int histogramNumD, int intervalsNum, int descriptorType, int descriptorNormalizationType) {
-//
-//	vector<Descriptor> descriptorsVector;
-//
-//	Gradient* gradients = CalculateGradientRaw(rows, cols, data, ImageFilters::kPartDerivativeTypeSobelCore, ImageFilters::kInterpolateBorder);
-//
-//		//for every point create descriptor
-//		for (int i = 0; i < points.size(); i++) {
-//
-//			//calculate dominating angles
-//			vector<double> alpha = CalculateDominatingAngle(points[i], rows, cols, gradients, DescriptorSizeD);
-//
-//			for (int j = 0; j < alpha.size(); j++) {
-//
-//				cout << '(' << points[i].x << ", " << points[i].y << ") => " << alpha[j] << "\n";
-//				Descriptor descriptor = CreateSquareDescriptorRaw(points[i], rows, cols, gradients, windowSizeD, histogramNumD, intervalsNum, alpha[j]);
-//				descriptorsVector.push_back(descriptor);
-//			}
-//		}
-//
-//	return descriptorsVector;
 //}

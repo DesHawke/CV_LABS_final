@@ -1,14 +1,99 @@
 ﻿#include "image_functions.h"
 
 
-void lab4() {
-	string filename = "C:/Users/salom/Desktop/test.jpg";
-	Mat original = imread(filename, 0);
-	Matrix F(original);
-	lin_norm(F, 0, 1);
-	Matrix gauss = gauss_filter(F, 5, 1);
+void lab4(string filename) {
 
-	vector<Pixel> points = ANMS(Harris(F, 5, 0.3, 0), 40);
+	Mat original1 = imread(filename);
+	Mat original2;
+	//original1.convertTo(original2, -1, 2, 0); //increase the contrast by 2
+	//original1.convertTo(original2, -1, 4, 0); //increase the contrast by 4
+	original1.convertTo(original2, -1, 0.5, 0); //decrease the contrast by 0.5
+	//original1.convertTo(original2, -1, 0.25, 0); //decrease the contrast by 0.25
+
+	Mat forcalc1;
+	cvtColor(original1, forcalc1, COLOR_BGR2GRAY);
+	
+	Mat forcalc2;
+	cvtColor(original2, forcalc2, COLOR_BGR2GRAY);
+
+	//show_image(forcalc1, "forcalc1");
+	//show_image(forcalc2, "forcalc2");
+	
+	Matrix F1(forcalc1);
+	Matrix F2(forcalc2);
+	lin_norm(F1, 0, 1);
+	lin_norm(F2, 0, 1);
+
+	vector<Pixel> points1 = ANMS(Harris(F1, 5, 0.05, 0), 60);
+	vector<Pixel> points2 = ANMS(Harris(F2, 5, 0.05, 0), 60);
+
+	vector<Descriptor> descriptors1 = getDescriptors(forcalc1, points1, 8, 8, 16);
+
+	vector<Descriptor> descriptors2 = getDescriptors(forcalc2, points2, 8, 8, 16);
+
+	vector<lines> matches = findSimilar(descriptors1, descriptors2, 0.80);
+
+	Mat comparsion;
+	comparsion.push_back(original1);
+	hconcat(comparsion, original2, comparsion);
+	for (int i = 0; i < points1.size(); i++)
+		circle(comparsion, Point(points1[i].x, points1[i].y), 1, Scalar(0, 0, 255), -1);
+	for (int i = 0; i < points2.size(); i++)
+		circle(comparsion, Point(points2[i].x + original1.cols, points2[i].y), 1, Scalar(0, 0, 255), -1);
+
+	RNG rng(10);
+	for (int i = 0; i < matches.size(); i++)
+		line(comparsion, Point(matches[i].first.interPoint.x, matches[i].first.interPoint.y), 
+			Point(matches[i].second.interPoint.x + original1.cols, matches[i].second.interPoint.y), Scalar(rng.uniform(0, 255), rng.uniform(0, 255), rng.uniform(0, 255)), 1, 8, 0);
+	show_image(comparsion, "comparsion");
+}
+
+void lab5(string filename) {
+	Mat original1 = imread(filename);
+	Mat original2 = imread(filename);
+	Mat original2_rotated = rotate_img(original2, 180);
+	//original2 = rotate_img(original2, 180);
+	//show_image(original2, "rotated");
+	
+	Mat forcalc1;
+	cvtColor(original1, forcalc1, COLOR_BGR2GRAY);
+
+	Mat forcalc2; 
+	cvtColor(original2_rotated, forcalc2, COLOR_BGR2GRAY);
+
+ 
+	Matrix F1(forcalc1);
+	Matrix F2(forcalc2);
+	//Matrix F2_rotated = rotate_mtr(F2, 180);
+	//Mat forcalc2_rotated = rotate_img(forcalc2, 180);
+	lin_norm(F1, 0, 1);
+	lin_norm(F2, 0, 1);
+
+
+	vector<Pixel> points1 = ANMS(Harris(F1, 5, 0.05, 0), 50);
+	vector<Pixel> points2 = ANMS(Harris(F2, 5, 0.05, 5), 50);
+
+	vector<Descriptor> descriptors1 = getDescriptorsInvRot(forcalc1, points1, 8, 8, 16);
+
+	vector<Descriptor> descriptors2 = getDescriptorsInvRot(forcalc2, points2, 8, 8, 16);
+
+	vector<lines> matches = findSimilar(descriptors1, descriptors2, 0.80);
+
+	Mat comparsion;
+	comparsion.push_back(original1);
+	
+	hconcat(comparsion, original2_rotated, comparsion);
+	for (int i = 0; i < points1.size(); i++)
+		circle(comparsion, Point(points1[i].x, points1[i].y), 1, Scalar(0, 0, 255), -1);
+	for (int i = 0; i < points2.size(); i++)
+		circle(comparsion, Point(points2[i].x + original1.cols, points2[i].y), 1, Scalar(0, 0, 255), -1);
+
+	RNG rng(10);
+	for (int i = 0; i < matches.size(); i++)
+		line(comparsion, Point(matches[i].first.interPoint.x, matches[i].first.interPoint.y),
+			Point(matches[i].second.interPoint.x + original1.cols, matches[i].second.interPoint.y), Scalar(rng.uniform(0, 255), rng.uniform(0, 255), rng.uniform(0, 255)), 1, 8, 0);
+	show_image(comparsion, "comparsion");
+
 }
 void lab1(Mat original){
 	Matrix F(original);
@@ -66,14 +151,15 @@ int main()
 {
 	string filename = "C:/Users/salom/Desktop/test.jpg";
 	Mat original = imread(filename, 0);
-	
+	Mat original2 = imread(filename, 0);
 	cout << "input lab number: ";		int lab_number; 	cin >> lab_number;
 	switch (lab_number)
 	{
 	case 1: lab1(original); break;
 	case 2: lab2(original); break;
-	case 3: lab3Harris(filename);
-		lab3Moravec(filename); break;
+	case 3: lab3Harris(filename); break;
+	case 4: lab4(filename); break;
+	case 5: lab5(filename); break;
 	default:
 		break;
 	}

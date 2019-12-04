@@ -5,6 +5,7 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/cvstd.hpp>
 #include <iostream>
+#include <math.h>
 
 using namespace std;
 using namespace cv;
@@ -15,15 +16,9 @@ public:
 	int y;
 	double value;
 	bool interest;
+	double phi;
 };
 
-
-struct PPoint {
-public:
-	int x;
-	int y;
-	double value;
-};
 
 class Matrix {
 public:
@@ -72,4 +67,54 @@ void show_result_harris(string, int, double, int, double angle = 0);
 
 bool find_mx(Matrix F, int sizeW, int x, int y);
 double gradients(Matrix);
+
+
+class Descriptor
+{
+public:
+	Pixel interPoint;    // Интересная точка - центр
+	int N;
+	double *data; // N - Количество корзин * L кол-во гистограмм
+
+	Descriptor() { }
+
+	Descriptor(int size, Pixel point)
+	{
+		N = size;
+		data = new double[size];
+		for (int x = 0; x < size; x++) {
+			data[x] = 0.0;
+		}
+		interPoint = point;
+	}
+
+	void normalize();
+	void clampData(double min, double max);
+};
+
+double Clamp(double min, double max, double value);
+
+vector<Descriptor> getDescriptors(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int barCharCount);
+vector<Descriptor> getDescriptorsInvRot(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int barCharCount);
+vector<double> getPointOrientation(Matrix image_dx, Matrix image_dy, Pixel point, int sigma, int radius);
+/* Поиск пика */
+double getPeak(double *baskets, int basketCount, int notEqual = -1);
+
+/* Интерполяция параболой */
+double parabaloidInterpolation(double* baskets, int basketCount, int maxIndex);
+
+double getGradientValue(double x, double y);
+
+double getGradientDirection(double x, double y);
+
+double getDistance(Descriptor d1, Descriptor d2);
+struct lines {
+public:
+	Descriptor first;
+	Descriptor second;
+};
+
+
+// Поиск похожих дескрипторов
+vector<lines> findSimilar(vector<Descriptor> d1, vector<Descriptor> d2, double treshhold);
 #endif
