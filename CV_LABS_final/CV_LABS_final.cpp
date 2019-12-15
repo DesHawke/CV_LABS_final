@@ -31,7 +31,7 @@ void lab4(string filename) {
 
 	vector<Descriptor> descriptors2 = getDescriptors(forcalc2, points2, 8, 8, 16);
 
-	vector<lines> matches = findSimilar(descriptors1, descriptors2, 0.80);
+	vector<lines> matches = findSimilarNORM(descriptors1, descriptors2, 0.60);
 
 	Mat comparsion;
 	comparsion.push_back(original1);
@@ -51,7 +51,8 @@ void lab4(string filename) {
 void lab5(string filename) {
 	Mat original1 = imread(filename);
 	Mat original2 = imread(filename);
-	Mat original2_rotated = rotate_img(original2, 90);
+	Mat original2_rotated = rotate_img(original2, 180);
+	//Mat original1 = rotate_img(original, 10);
 	//original2 = rotate_img(original2, 180);
 	//show_image(original2, "rotated");
 	
@@ -70,15 +71,16 @@ void lab5(string filename) {
 	lin_norm(F2, 0, 1);
 
 
-	vector<Pixel> points1 = ANMS(Harris(F1, 5, 0.05, 0), 100);
-	vector<Pixel> points2 = ANMS(Harris(F2, 5, 0.05, 5), 100 );
+	vector<Pixel> points1 = ANMS(Harris(F1, 5, 0.05, 0), 50);
+	vector<Pixel> points2 = ANMS(Harris(F2, 5, 0.05, 0), 50 );
 
-	vector<Descriptor> descriptors1 = getDescriptorsInvRot(forcalc1, points1, 8, 8, 16);
+	vector<Descriptor> descriptors1 = GET_NEW_DescriptorsInvRot(forcalc1, points1, 8, 8, 16);
 
-	vector<Descriptor> descriptors2 = getDescriptorsInvRot(forcalc2, points2, 8, 8, 16);
+	vector<Descriptor> descriptors2 = GET_NEW_DescriptorsInvRot(forcalc2, points2, 8, 8, 16);
 
-	vector<lines> matches = findSimilar(descriptors1, descriptors2, 0.80);
+	vector<lines> matches = findSimilarNORM(descriptors1, descriptors2, 0.60);
 
+	cout << matches.size();
 	Mat comparsion;
 	comparsion.push_back(original1);
 	

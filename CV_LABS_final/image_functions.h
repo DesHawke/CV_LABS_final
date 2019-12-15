@@ -16,7 +16,7 @@ public:
 	int y;
 	double value;
 	bool interest;
-	double phi;
+	//double phi;
 };
 
 
@@ -74,7 +74,7 @@ class Descriptor
 public:
 	Pixel interPoint;    // Интересная точка - центр
 	int N;
-	double *data; // N - Количество корзин * L кол-во гистограмм
+	double *data; // Количество корзин * кол-во гистограмм
 
 	Descriptor() { }
 
@@ -96,6 +96,12 @@ double Clamp(double min, double max, double value);
 
 vector<Descriptor> getDescriptors(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int barCharCount);
 vector<Descriptor> getDescriptorsInvRot(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int barCharCount);
+vector<Descriptor> getDescriptorsInvRot2(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int barCharCount);
+
+vector<Descriptor> GET_NEW_DescriptorsInvRot(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int barCharCount);
+vector<Descriptor> GET_NEW_DescriptorsInvRot2(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int barCharCount);
+vector<double> GET_NEW_PointOrientation(Matrix image_dx, Matrix image_dy, Pixel point, int radius);
+
 vector<double> getPointOrientation(Matrix image_dx, Matrix image_dy, Pixel point, int radius);
 /* Поиск пика */
 double getPeak(double *baskets, int basketCount, int notEqual = -1);
@@ -117,5 +123,5 @@ public:
 
 // Поиск похожих дескрипторов
 vector<lines> findSimilar(vector<Descriptor> d1, vector<Descriptor> d2, double treshhold);
-
+vector<lines> findSimilarNORM(vector<Descriptor> d1, vector<Descriptor> d2, double treshhold);
 #endif
