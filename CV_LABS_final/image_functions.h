@@ -94,26 +94,19 @@ public:
 
 double Clamp(double min, double max, double value);
 
-vector<Descriptor> getDescriptors(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int barCharCount);
-vector<Descriptor> getDescriptorsInvRot(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int barCharCount);
-vector<Descriptor> getDescriptorsInvRot2(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int barCharCount);
+vector<Descriptor> get_Descriptors(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int barCharCount);
 
-vector<Descriptor> GET_NEW_DescriptorsInvRot(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int barCharCount);
-vector<Descriptor> GET_NEW_DescriptorsInvRot2(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int barCharCount);
-vector<double> GET_NEW_PointOrientation(Matrix image_dx, Matrix image_dy, Pixel point, int radius);
+vector<Descriptor> GET_NEW_DescriptorsInvRot(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int barCharCountInLine);
 
-vector<double> getPointOrientation(Matrix image_dx, Matrix image_dy, Pixel point, int radius);
-/* Поиск пика */
-double getPeak(double *baskets, int basketCount, int notEqual = -1);
+vector<double> GET_NEW_PointOrientation(Matrix image_dx, Matrix image_dy, Pixel point, int radius, int basketCount = 36);
 
-/* Интерполяция параболой */
-double parabaloidInterpolation(double* baskets, int basketCount, int maxIndex);
 
 double getGradientValue(double x, double y);
 
 double getGradientDirection(double x, double y);
 
 double getDistance(Descriptor d1, Descriptor d2);
+
 struct lines {
 public:
 	Descriptor first;
@@ -122,6 +115,5 @@ public:
 
 
 // Поиск похожих дескрипторов
-vector<lines> findSimilar(vector<Descriptor> d1, vector<Descriptor> d2, double treshhold);
 vector<lines> findSimilarNORM(vector<Descriptor> d1, vector<Descriptor> d2, double treshhold);
 #endif

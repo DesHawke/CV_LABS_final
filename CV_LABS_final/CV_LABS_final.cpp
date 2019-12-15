@@ -7,7 +7,7 @@ void lab4(string filename) {
 	Mat original2;
 	//original1.convertTo(original2, -1, 2, 0); //increase the contrast by 2
 	//original1.convertTo(original2, -1, 4, 0); //increase the contrast by 4
-	original1.convertTo(original2, -1, 0.5, 0); //decrease the contrast by 0.5
+	original1.convertTo(original2, -1, 0.7, 0); //decrease the contrast by 0.5
 	//original1.convertTo(original2, -1, 0.25, 0); //decrease the contrast by 0.25
 
 	Mat forcalc1;
@@ -27,9 +27,9 @@ void lab4(string filename) {
 	vector<Pixel> points1 = ANMS(Harris(F1, 5, 0.05, 0), 60);
 	vector<Pixel> points2 = ANMS(Harris(F2, 5, 0.05, 0), 60);
 
-	vector<Descriptor> descriptors1 = getDescriptors(forcalc1, points1, 8, 8, 16);
+	vector<Descriptor> descriptors1 = get_Descriptors(forcalc1, points1, 8, 16, 4);
 
-	vector<Descriptor> descriptors2 = getDescriptors(forcalc2, points2, 8, 8, 16);
+	vector<Descriptor> descriptors2 = get_Descriptors(forcalc2, points2, 8, 16, 4);
 
 	vector<lines> matches = findSimilarNORM(descriptors1, descriptors2, 0.60);
 
@@ -52,7 +52,7 @@ void lab5(string filename) {
 	Mat original1 = imread(filename);
 	Mat original2 = imread(filename);
 	Mat original2_rotated = rotate_img(original2, 180);
-	//Mat original1 = rotate_img(original, 10);
+
 	//original2 = rotate_img(original2, 180);
 	//show_image(original2, "rotated");
 	
@@ -65,18 +65,17 @@ void lab5(string filename) {
  
 	Matrix F1(forcalc1);
 	Matrix F2(forcalc2);
-	//Matrix F2_rotated = rotate_mtr(F2, 180);
-	//Mat forcalc2_rotated = rotate_img(forcalc2, 180);
+	
 	lin_norm(F1, 0, 1);
 	lin_norm(F2, 0, 1);
 
 
-	vector<Pixel> points1 = ANMS(Harris(F1, 5, 0.05, 0), 50);
-	vector<Pixel> points2 = ANMS(Harris(F2, 5, 0.05, 0), 50 );
+	vector<Pixel> points1 = ANMS(Harris(F1, 5, 0.05, 0), 100);
+	vector<Pixel> points2 = ANMS(Harris(F2, 5, 0.05, 0), 100 );
 
-	vector<Descriptor> descriptors1 = GET_NEW_DescriptorsInvRot(forcalc1, points1, 8, 8, 16);
+	vector<Descriptor> descriptors1 = GET_NEW_DescriptorsInvRot(forcalc1, points1, 8, 16, 4);
 
-	vector<Descriptor> descriptors2 = GET_NEW_DescriptorsInvRot(forcalc2, points2, 8, 8, 16);
+	vector<Descriptor> descriptors2 = GET_NEW_DescriptorsInvRot(forcalc2, points2, 8, 16, 4);
 
 	vector<lines> matches = findSimilarNORM(descriptors1, descriptors2, 0.60);
 

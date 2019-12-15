@@ -601,13 +601,12 @@ void Descriptor::clampData(double min, double max)
 		data[i] = Clamp(min, max, data[i]);
 }
 
-vector<Descriptor> getDescriptors(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int barCharCount)
+vector<Descriptor> get_Descriptors(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int histCountInLine)
 {
-	int dimension = 2 * radius; //размерность окрестности интересной точки
 	double sector = 2 * PI / basketCount; //размер одной корзины в гистограмме
 	double halfSector = PI / basketCount; // размер половины одной корзины в гистограмме
-	int barCharStep = dimension / (barCharCount / 4); //шаг гистограммы
-	int barCharCountInLine = (barCharCount / 4);
+	int histStep = radius * 2 / histCountInLine; //шаг гистограммы
+	int histCount = histCountInLine * histCountInLine; //общее количество гистограмм в дескрипторе
 
 
 	Matrix image_dx = derivative(image, Hx_sobel);
@@ -616,7 +615,7 @@ vector<Descriptor> getDescriptors(Mat image, vector<Pixel> interestPoints, int r
 	vector<Descriptor> descriptors;
 	for (int k = 0; k < interestPoints.size(); k++)
 	{
-		descriptors.push_back(Descriptor(barCharCount * basketCount, interestPoints[k]));
+		descriptors.push_back(Descriptor(histCount * basketCount, interestPoints[k]));
 
 		for (int i = - radius; i <= radius; i++)
 		{
@@ -632,23 +631,46 @@ vector<Descriptor> getDescriptors(Mat image, vector<Pixel> interestPoints, int r
 				double value = getGradientValue(gradient_X, gradient_Y);
 				double phi = getGradientDirection(gradient_X, gradient_Y);
 
-				// получаем индекс корзины в которую входит phi и смежную с ней
-				int firstBasketIndex = (int)floor(phi / sector);
-				int secondBasketIndex = (int)(floor((phi - halfSector) / sector) + basketCount) % basketCount;
+		
+				int leftBasketIndex, rightBasketIndex;
 
-				// вычисляем центр корзины
-				double mainBasketPhi = firstBasketIndex * sector + halfSector;
+				double leftBasketKoef;
+				double rightBasketKoef;
+				// получаем индекс корзины в которую входит phi и смежную с ней
+				if (phi < (sector * 0) + halfSector) {
+					leftBasketIndex = basketCount - 1;
+					rightBasketIndex = 0;
+					// (sector * 0) + halfSector - середина первой корзины
+					rightBasketKoef = (((sector * 0) + halfSector) - phi) / sector;
+					leftBasketKoef = 1 - rightBasketKoef;
+				}
+				else if (phi > (sector * (basketCount - 1) + halfSector)) {
+					leftBasketIndex = basketCount - 1;
+					rightBasketIndex = 0;
+
+					// (sector * (basketCount-1)) + halfSector - середина последней корзины
+					leftBasketKoef = (phi - (sector * leftBasketIndex + halfSector)) / sector;
+					rightBasketKoef = 1 - leftBasketKoef;
+				}
+				else {
+					leftBasketIndex = (int)((phi - halfSector) / sector);
+					rightBasketIndex = leftBasketIndex + 1;
+
+					leftBasketKoef = (phi - (sector * leftBasketIndex + halfSector)) / sector;
+					rightBasketKoef = 1 - leftBasketKoef;
+				}
+
 
 				// распределяем L(value)
-				double mainBasketValue = (1 - (abs(phi - mainBasketPhi) / sector)) * value;
-				double sideBasketValue = value - mainBasketValue;
+				double mainBasketValue = (1 - leftBasketKoef) * value;
+				double sideBasketValue = rightBasketKoef * value;
 
 				// вычисляем индекс куда записывать значения
-				int tmp_i = (i + radius) / barCharStep;
-				int tmp_j = (j + radius) / barCharStep;
+				int tmp_i = (i + radius) / histStep;
+				int tmp_j = (j + radius) / histStep;
 
-				int indexMain = (tmp_i * barCharCountInLine + tmp_j) * basketCount + firstBasketIndex;
-				int indexSide = (tmp_i * barCharCountInLine + tmp_j) * basketCount + secondBasketIndex;
+				int indexMain = (tmp_i * histCountInLine + tmp_j) * basketCount + leftBasketIndex;
+				int indexSide = (tmp_i * histCountInLine + tmp_j) * basketCount + rightBasketIndex;
 
 				if (indexMain >= descriptors[k].N)
 					indexMain = 0;
@@ -668,15 +690,13 @@ vector<Descriptor> getDescriptors(Mat image, vector<Pixel> interestPoints, int r
 	return descriptors;
 }
 
-
-vector<Descriptor> GET_NEW_DescriptorsInvRot(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int barCharCount)
+vector<Descriptor> GET_NEW_DescriptorsInvRot(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int histCountInLine)
 {
-	int dimension = 2 * radius; //размерность окрестности интересной точки
+	//radius - окрестность интересной точки
 	double sector = 2 * PI / basketCount; //размер одной корзины в гистограмме
 	double halfSector = PI / basketCount; // размер половины одной корзины в гистограмме
-	int barCharStep = dimension / (barCharCount / 4); //шаг гистограммы
-	int barCharCountInLine = (barCharCount / 4);
-
+	int histStep = radius*2 / histCountInLine; //шаг гистограммы
+	int histCount = histCountInLine * histCountInLine; //общее количество гистограмм в дескрипторе
 
 	Matrix image_dx = derivative(image, Hx_sobel);
 	Matrix image_dy = derivative(image, Hy_sobel);
@@ -686,17 +706,11 @@ vector<Descriptor> GET_NEW_DescriptorsInvRot(Mat image, vector<Pixel> interestPo
 
 	for (int k = 0; k < interestPoints.size(); k++)
 	{
-		descriptors.push_back(Descriptor(barCharCount * basketCount, interestPoints[k]));
+		descriptors.push_back(Descriptor(histCount * basketCount, interestPoints[k]));
 		vector<double> peaks = GET_NEW_PointOrientation(image_dx, image_dy, interestPoints[k], radius);    // Ориентация точки
 
 		for (int p = 0; p < peaks.size(); p++) {
 			double phiRotate = peaks[p];
-
-			/*
-			Pixel pix = interestPoints[k];
-			pix.phi = phiRotate;
-			interestPoints[k] = pix;
-			*/
 
 			for (int y_i = -radius; y_i <= radius; y_i++)
 			{
@@ -723,8 +737,8 @@ vector<Descriptor> GET_NEW_DescriptorsInvRot(Mat image, vector<Pixel> interestPo
 					{
 						continue;
 					}
-					int tmp_i = (x_i_Rotate + radius) / barCharStep;
-					int tmp_j = (y_i_Rotate + radius) / barCharStep;
+					int tmp_i = (x_i_Rotate + radius) / histStep;
+					int tmp_j = (y_i_Rotate + radius) / histStep;
 
 					// поиск итогового угла
 					double finalPhi = phi - phiRotate;
@@ -764,18 +778,14 @@ vector<Descriptor> GET_NEW_DescriptorsInvRot(Mat image, vector<Pixel> interestPo
 
 
 					// распределяем L(value)
-					double mainBasketValue = rightBasketKoef * value;
-					double sideBasketValue = leftBasketKoef * value;
+					double mainBasketValue = (1 - leftBasketKoef) * value;
+					double sideBasketValue = rightBasketKoef * value;
 
 
 					//////////////////
 					// вычисляем индекс куда записывать значения
-					
-
-					
-
-					int indexMain = (tmp_i * barCharCountInLine + tmp_j) * basketCount + leftBasketIndex;
-					int indexSide = (tmp_i * barCharCountInLine + tmp_j) * basketCount + rightBasketIndex;
+					int indexMain = (tmp_i * histCountInLine + tmp_j) * basketCount + leftBasketIndex;
+					int indexSide = (tmp_i * histCountInLine + tmp_j) * basketCount + rightBasketIndex;
 
 					// записываем значения
 					descriptors[k].data[indexMain] += mainBasketValue;
@@ -785,139 +795,13 @@ vector<Descriptor> GET_NEW_DescriptorsInvRot(Mat image, vector<Pixel> interestPo
 			descriptors[k].normalize();
 			descriptors[k].clampData(0, 0.2);
 			descriptors[k].normalize();
-			//descriptors[k].interPoint = interestPoints[k];
 		}
 	}
 	return descriptors;
 }
 
-vector<Descriptor> GET_NEW_DescriptorsInvRot2(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int barCharCount)
+vector<double> GET_NEW_PointOrientation(Matrix image_dx, Matrix image_dy, Pixel point, int radius, int basketCount)
 {
-	int dimension = 2 * radius; //размерность окрестности интересной точки
-	double sector = 2 * PI / basketCount; //размер одной корзины в гистограмме
-	double halfSector = PI / basketCount; // размер половины одной корзины в гистограмме
-	int barCharStep = dimension / (barCharCount / 4); //шаг гистограммы
-	int barCharCountInLine = (barCharCount / 4);
-
-
-	Matrix image_dx = derivative(image, Hx_sobel);
-	Matrix image_dy = derivative(image, Hy_sobel);
-
-	vector<Descriptor> descriptors;
-	Matrix Gauss = gauss_weight(2 * radius + 1, (double)radius / 3);
-
-	for (int k = 0; k < interestPoints.size(); k++)
-	{
-		descriptors.push_back(Descriptor(barCharCount * basketCount, interestPoints[k]));
-		vector<double> peaks = GET_NEW_PointOrientation(image_dx, image_dy, interestPoints[k], radius);    // Ориентация точки
-
-		for (int p = 0; p < peaks.size(); p++) {
-			double phiRotate = PI/2;
-
-			/*
-			Pixel pix = interestPoints[k];
-			pix.phi = phiRotate;
-			interestPoints[k] = pix;
-			*/
-
-			for (int y_i = -radius; y_i <= radius; y_i++)
-			{
-				for (int x_i = -radius; x_i <= radius; x_i++)
-				{
-
-
-
-					// координаты
-					int coord_X = repeat_edge(interestPoints[k].x, x_i, image_dx.width);
-					int coord_Y = repeat_edge(interestPoints[k].y, y_i, image_dx.height);
-
-					// градиент
-					double gradient_X = image_dx.values[coord_Y][coord_X];
-					double gradient_Y = image_dy.values[coord_Y][coord_X];
-
-					// получаем значение(домноженное на Гаусса) и угол
-					double value = getGradientValue(gradient_X, gradient_Y) * Gauss.values[y_i + radius][x_i + radius];
-					double phi = getGradientDirection(gradient_X, gradient_Y);
-
-					// Определяем гистограмму куда мы будем записывать
-					int x_i_Rotate = (int)round((x_i)*cos(phiRotate) + (y_i)*sin(phiRotate));
-					int y_i_Rotate = (int)round(-(x_i)*sin(phiRotate) + (y_i)*cos(phiRotate));
-					// отбрасываем
-					if (x_i_Rotate < -radius || y_i_Rotate < -radius || x_i_Rotate >= radius || y_i_Rotate >= radius)
-					{
-						continue;
-					}
-					int tmp_i = (x_i_Rotate + radius) / barCharStep;
-					int tmp_j = (y_i_Rotate + radius) / barCharStep;
-
-					// поиск итогового угла
-					double finalPhi = phi + phiRotate;
-					if (finalPhi < 0)
-						finalPhi = 2 * PI - finalPhi;
-					if (finalPhi > 2 * PI)
-						finalPhi = -2 * PI + finalPhi;
-
-					int leftBasketIndex;
-					int rightBasketIndex;
-
-					// Коэффициент принадлежности к корзине (0,1)
-					double leftBasketKoef;
-					double rightBasketKoef;
-					if (finalPhi < (sector * 0) + halfSector) {
-						leftBasketIndex = basketCount - 1;
-						rightBasketIndex = 0;
-						// (sector * 0) + halfSector - середина первой корзины
-						rightBasketKoef = (((sector * 0) + halfSector) - finalPhi) / sector;
-						leftBasketKoef = 1 - rightBasketKoef;
-					}
-					else if (finalPhi > (sector * (basketCount - 1) + halfSector)) {
-						leftBasketIndex = basketCount - 1;
-						rightBasketIndex = 0;
-
-						// (sector * (basketCount-1)) + halfSector - середина последней корзины
-						leftBasketKoef = (finalPhi - (sector * leftBasketIndex + halfSector)) / sector;
-						rightBasketKoef = 1 - leftBasketKoef;
-					}
-					else {
-						leftBasketIndex = (int)((finalPhi - halfSector) / sector);
-						rightBasketIndex = leftBasketIndex + 1;
-
-						leftBasketKoef = (finalPhi - (sector * leftBasketIndex + halfSector)) / sector;
-						rightBasketKoef = 1 - leftBasketKoef;
-					}
-
-
-					// распределяем L(value)
-					double mainBasketValue = rightBasketKoef * value;
-					double sideBasketValue = leftBasketKoef * value;
-
-
-					//////////////////
-					// вычисляем индекс куда записывать значения
-
-
-
-
-					int indexMain = (tmp_i * barCharCountInLine + tmp_j) * basketCount + leftBasketIndex;
-					int indexSide = (tmp_i * barCharCountInLine + tmp_j) * basketCount + rightBasketIndex;
-
-					// записываем значения
-					descriptors[k].data[indexMain] += mainBasketValue;
-					descriptors[k].data[indexSide] += sideBasketValue;
-				}
-			}
-			descriptors[k].normalize();
-			descriptors[k].clampData(0, 0.2);
-			descriptors[k].normalize();
-			//descriptors[k].interPoint = interestPoints[k];
-		}
-	}
-	return descriptors;
-}
-
-vector<double> GET_NEW_PointOrientation(Matrix image_dx, Matrix image_dy, Pixel point, int radius)
-{
-	const int basketCount = 36;
 
 	double sector = 2 * PI / basketCount;
 	double halfSector = sector / 2;
@@ -1008,211 +892,6 @@ vector<double> GET_NEW_PointOrientation(Matrix image_dx, Matrix image_dy, Pixel 
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-/*
-vector<Descriptor> getDescriptorsInvRot(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int barCharCount)
-{
-	//int sigma = 20;
-	int dimension = 2 * radius;
-	double sector = 2 * PI / basketCount;
-	double halfSector = PI / basketCount;
-	int barCharStep = dimension / (barCharCount / 4);
-	int barCharCountInLine = (barCharCount / 4);
-
-	Matrix image_dx = derivative(image, Hx_sobel);
-	Matrix image_dy = derivative(image, Hy_sobel);
-
-	vector<Descriptor> descriptors;
-	Matrix Gauss = gauss_weight(2 * radius + 1, (double)radius / 3);
-	for (int k = 0; k < interestPoints.size(); k++)
-	{
-		descriptors.push_back(Descriptor(barCharCount * basketCount, interestPoints[k]));
-		vector<double> peaks = getPointOrientation(image_dx, image_dy, interestPoints[k], radius);    // Ориентация точки
-
-		for(int p=0; p< peaks.size(); p++){
-			double phiRotate = peaks[p];
-
-			Pixel pix = interestPoints[k];
-			pix.phi = phiRotate;
-			interestPoints[k] = pix;
-
-			for (int i = -radius; i <= radius; i++)
-			{
-				for (int j = -radius; j <= radius; j++)
-				{
-					// координаты
-					int coord_X = repeat_edge(interestPoints[k].x, i, image_dx.width);
-					int coord_Y = repeat_edge(interestPoints[k].y, j, image_dx.height);
-					
-					// градиент
-					double gradient_X = image_dx.values[coord_Y][coord_X];
-					double gradient_Y = image_dy.values[coord_Y][coord_X];
-
-					// получаем значение(домноженное на Гаусса) и угол
-					double value = getGradientValue(gradient_X, gradient_Y) * Gauss.values[j+radius][i+radius];
-					double phi = getGradientDirection(gradient_X, gradient_Y) - phiRotate;
-					if (phi < 0)
-						phi = 2 * PI - phi;
-					if (phi > 2*PI)
-						phi = -2 * PI + phi;
-
-					//phi = fmod(phi, 2) * PI;  // Shift
-
-					// получаем индекс корзины в которую входит phi и смежную с ней
-					int firstBasketIndex = (int)(phi / sector);
-					if (phi < halfSector)
-						firstBasketIndex = basketCount - 1;
-					//int secondBasketIndex = (int)((phi / sector) + basketCount) % basketCount;
-					int secondBasketIndex = (firstBasketIndex + 1) % basketCount;
-					// вычисляем центр
-					double mainBasketPhi = firstBasketIndex * sector + halfSector;
-
-					double k = (phi - mainBasketPhi) / sector;
-					// распределяем L(value)
-					if (phi < mainBasketPhi) {
-						k = (basketCount * sector + phi - mainBasketPhi) / sector;
-					}
-					
-
-
-
-					//////////////////
-					// вычисляем индекс куда записывать значения
-					int i_Rotate = (int)round((i) * cos(phiRotate) + (j) * sin(phiRotate));
-					int j_Rotate = (int)round(-(i) * sin(phiRotate) + (j) * cos(phiRotate));
-
-					// отбрасываем
-					if (i_Rotate < -radius || j_Rotate < -radius || i_Rotate >= radius || j_Rotate >= radius)
-					{
-						continue;
-					}
-
-					int tmp_i = (i_Rotate + radius) / barCharStep;
-					int tmp_j = (j_Rotate + radius) / barCharStep;
-
-					int indexMain = (tmp_i * barCharCountInLine + tmp_j) * basketCount + firstBasketIndex;
-					int indexSide = (tmp_i * barCharCountInLine + tmp_j) * basketCount + secondBasketIndex;
-					
-					// записываем значения
-					//descriptors[k].data[indexMain] += mainBasketValue;
-					//descriptors[k].data[indexSide] += sideBasketValue;
-				}
-			}
-			descriptors[k].normalize();
-			descriptors[k].clampData(0, 0.2);
-			descriptors[k].normalize();
-			descriptors[k].interPoint = interestPoints[k];
-		}
-	}
-	return descriptors;
-}
-vector<Descriptor> getDescriptorsInvRot2(Mat image, vector<Pixel> interestPoints, int radius, int basketCount, int barCharCount)
-{
-	//int sigma = 20;
-	int dimension = 2 * radius;
-	double sector = 2 * PI / basketCount;
-	double halfSector = PI / basketCount;
-	int barCharStep = dimension / (barCharCount / 4);
-	int barCharCountInLine = (barCharCount / 4);
-
-	Matrix image_dx = derivative(image, Hx_sobel);
-	Matrix image_dy = derivative(image, Hy_sobel);
-
-	vector<Descriptor> descriptors;
-	Matrix Gauss = gauss_weight(2 * radius + 1, (double)radius / 3);
-	for (int k = 0; k < interestPoints.size(); k++)
-	{
-		descriptors.push_back(Descriptor(barCharCount * basketCount, interestPoints[k]));
-		vector<double> peaks = getPointOrientation(image_dx, image_dy, interestPoints[k], radius);    // Ориентация точки
-
-		for (int p = 0; p < peaks.size(); p++) {
-			double phiRotate = peaks[p];
-
-			Pixel pix = interestPoints[k];
-			pix.phi = 180;
-			interestPoints[k] = pix;
-
-			for (int i = -radius; i <= radius; i++)
-			{
-				for (int j = -radius; j <= radius; j++)
-				{
-					// координаты
-					int coord_X = repeat_edge(interestPoints[k].x, i, image_dx.width);
-					int coord_Y = repeat_edge(interestPoints[k].y, j, image_dx.height);
-
-					// градиент
-					double gradient_X = image_dx.values[coord_Y][coord_X];
-					double gradient_Y = image_dy.values[coord_Y][coord_X];
-
-					// получаем значение(домноженное на Гаусса) и угол
-					double value = getGradientValue(gradient_X, gradient_Y) * Gauss.values[j + radius][i + radius];
-					double phi = getGradientDirection(gradient_X, gradient_Y) - phiRotate;
-					if (phi < 0)
-						phi = 2 * PI - phi;
-					if (phi > 2 * PI)
-						phi = -2 * PI + phi;
-
-					//phi = fmod(phi, 2) * PI;  // Shift
-
-					// получаем индекс корзины в которую входит phi и смежную с ней
-					int firstBasketIndex = (int)(phi / sector);
-					if (phi < halfSector)
-						firstBasketIndex = basketCount - 1;
-					//int secondBasketIndex = (int)((phi / sector) + basketCount) % basketCount;
-					int secondBasketIndex = (firstBasketIndex + 1) % basketCount;
-					// вычисляем центр
-					double mainBasketPhi = firstBasketIndex * sector + halfSector;
-
-					double k = (phi - mainBasketPhi) / sector;
-					// распределяем L(value)
-					if (phi < mainBasketPhi) {
-						k = (basketCount * sector + phi - mainBasketPhi) / sector;
-					}
-					double mainBasketValue = (1 - k) * value;
-					double sideBasketValue = k * value;
-
-
-					//////////////////
-					// вычисляем индекс куда записывать значения
-					int i_Rotate = (int)round((i)*cos(phiRotate) + (j)*sin(phiRotate));
-					int j_Rotate = (int)round(-(i)*sin(phiRotate) + (j)*cos(phiRotate));
-
-					// отбрасываем
-					if (i_Rotate < -radius || j_Rotate < -radius || i_Rotate >= radius || j_Rotate >= radius)
-					{
-						continue;
-					}
-
-					int tmp_i = (i_Rotate + radius) / barCharStep;
-					int tmp_j = (j_Rotate + radius) / barCharStep;
-
-					int indexMain = (tmp_i * barCharCountInLine + tmp_j) * basketCount + firstBasketIndex;
-					int indexSide = (tmp_i * barCharCountInLine + tmp_j) * basketCount + secondBasketIndex;
-
-					// записываем значения
-					descriptors[k].data[indexMain] += mainBasketValue;
-					descriptors[k].data[indexSide] += sideBasketValue;
-				}
-			}
-			descriptors[k].normalize();
-			descriptors[k].clampData(0, 0.2);
-			descriptors[k].normalize();
-			descriptors[k].interPoint = interestPoints[k];
-		}
-	}
-	return descriptors;
-}
-*/
 double getGradientValue(double x, double y)
 {
 	return sqrt(x * x + y * y);
@@ -1223,41 +902,6 @@ double getGradientDirection(double x, double y) {
 	return angle > 0 ? angle : PI*2 + angle;
 	//return atan2(x, y) + PI; 
 }
-// Поиск похожих дескрипторов
-vector<lines> findSimilar(vector<Descriptor> d1, vector<Descriptor> d2, double treshhold)
-{
-	vector<lines> similar;
-	for (int i = 0; i < d1.size(); i++)
-	{
-		int indexSimilar = -1;
-		double prevDistance = 10000000;       // Предыдущий
-		double minDistance = 10000000;        // Минимальный
-		for (int j = 0; j < d2.size(); j++)
-		{
-			double dist = getDistance(d1[i], d2[j]);
-			if (dist < minDistance)
-			{
-				indexSimilar = j;
-				prevDistance = minDistance;
-				minDistance = dist;
-			}
-		}
-
-		if (minDistance / prevDistance > treshhold)
-		{
-			continue;      // отбрасываем
-		}
-		else
-		{
-			lines l;
-			l.first = d1[i];
-			l.second = d2[indexSimilar];
-			similar.push_back(l);
-		}
-	}
-	return similar;
-}
-
 vector<lines> findSimilarNORM(vector<Descriptor> d1, vector<Descriptor> d2, double treshhold)
 {
 	vector<lines> similar;
@@ -1314,124 +958,6 @@ double getDistance(Descriptor d1, Descriptor d2)
 	return sqrt(result);
 }
 
-/* Ориентация точки */
-vector<double> getPointOrientation(Matrix image_dx, Matrix image_dy, Pixel point, int radius)
-{
-	const int basketCount = 36;
-
-	int dimension = radius * 2;
-	double sector = 2 * PI / basketCount;
-	double halfSector = PI / basketCount;
-
-	double *baskets = new double[basketCount];
-
-	for (int i = 0; i < basketCount; i++)
-		baskets[i] = 0;
-
-	Matrix Gauss = gauss_weight(2*radius+1, (double)radius/3);
-	for (int i = -radius; i <= radius; i++)
-	{
-		for (int j = - radius; j <= radius; j++)
-		{
-
-			int coord_X = repeat_edge(point.x, i, image_dx.width);
-			int coord_Y = repeat_edge(point.y, j, image_dx.height);
-
-			// градиент
-		
-			double gradient_X = image_dx.values[coord_Y][coord_X];
-			double gradient_Y = image_dy.values[coord_Y][coord_X];
-		
-			// получаем значение(домноженное на Гаусса) и угол
-			double value = getGradientValue(gradient_X, gradient_Y) * Gauss.values[j+radius][i+radius];
-			double phi = getGradientDirection(gradient_X, gradient_Y);
-
-
-			// получаем индекс корзины в которую входит phi и смежную с ней
-			int firstBasketIndex = (int)(phi / sector);
-			if (phi < halfSector)
-				firstBasketIndex = basketCount - 1;
-			//int secondBasketIndex = (int)((phi / sector) + basketCount) % basketCount;
-			int secondBasketIndex = (firstBasketIndex + 1) % basketCount;
-			// вычисляем центр
-			double mainBasketPhi = firstBasketIndex * sector + halfSector;
-
-			double k = (phi - mainBasketPhi) / sector;
-			// распределяем L(value)
-			if (phi < mainBasketPhi) { 
-				k = (basketCount * sector + phi - mainBasketPhi) / sector; }
-			double mainBasketValue = (1 - k)*value;
-			double sideBasketValue = k * value;
-
-			// записываем значения
-			//firstBasketIndex = (int)Clamp(0, basketCount - 1, firstBasketIndex);
-			//secondBasketIndex = (int)Clamp(0, basketCount - 1, secondBasketIndex);
-			baskets[firstBasketIndex] += mainBasketValue;
-			baskets[secondBasketIndex] += sideBasketValue;
-		}
-	}
-
-	// Ищем Пики
-	//double peak_1 = getPeak(baskets, basketCount);
-	//double peak_2 = getPeak(baskets, basketCount, (int)peak_1);
-	double peak_1, peak_2;
-	int peak_1_index=0, peak_2_index=0;
-	peak_1 = baskets[0];
-	peak_2 = baskets[0];
-	for (int i = 1; i < basketCount; i++) {
-		if (baskets[i] > peak_1) {
-			peak_2 = peak_1;
-			peak_2_index = peak_1_index;
-			peak_1 = baskets[i];
-			peak_1_index = i;
-		}
-	}
-	//хотя бы peak_1 должен быть!
-	vector<double> peaks;
-	//if (peak_2 != -1 && baskets[(int)peak_2] / baskets[(int)peak_1] >= 0.8)
-	if(peak_2> peak_1*0.8)
-	{ // Если второй пик не ниже 80%
-		peaks.push_back(fmod(peak_1_index * sector + halfSector, 2*PI));
-		peaks.push_back(fmod(peak_2_index * sector + halfSector, 2 * PI));
-	}
-	else
-	{
-		peaks.push_back(fmod(peak_1_index * sector + halfSector, 2 * PI));
-	}
-	return peaks;
-}
-
-/* Поиск пика */
-double getPeak(double *baskets, int basketCount, int notEqual)
-{
-	int maxBasketIndex = -1;
-	for (int i = 0; i < basketCount; i++)
-	{
-		if (baskets[i] > baskets[(i - 1 + basketCount) % basketCount]
-			&& baskets[i] > baskets[(i + 1) % basketCount] && i != notEqual)
-		{
-			if (maxBasketIndex != -1 && baskets[maxBasketIndex] > baskets[i])
-			{
-				continue;
-			}
-			maxBasketIndex = i;
-		}
-	}
-	return maxBasketIndex;
-}
-
-/* Интерполяция параболой */
-double parabaloidInterpolation(double *baskets, int basketCount, int maxIndex)
-{
-	// берём левую и правую корзину и интерполируем параболой
-	double left = baskets[(maxIndex - 1 + basketCount) % basketCount];
-	double right = baskets[(maxIndex + 1) % basketCount];
-	double mid = baskets[maxIndex];
-
-	double sector = 2 * PI / basketCount;
-	double phi = (left - right) / (2 * (left + right - 2 * mid));
-	return (phi + maxIndex) * sector + (sector / 2);
-}
 //Matrix *L(Matrix *F, int s, double sig_0, double sig_a) {
 //
 //	Matrix *Octaves = new Matrix[10];
